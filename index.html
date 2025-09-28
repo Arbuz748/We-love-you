@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Поздравление классному руководителю</title>
+  <meta name="description" content="Искреннее поздравление от класса — фото, голосовые пожелания и общий финал." />
+  <style>
+    /* --- БАЗОВЫЕ СТИЛИ --- */
+    :root{--bg:#000;--fg:#fff;--transition:1s cubic-bezier(.2,.9,.2,1)}
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:var(--bg);color:var(--fg);overflow:hidden;display:flex;align-items:center;justify-content:center}
+
+    /* Контейнер всего опыта — занимает весь экран мобильного устройства */
+    #app{width:100%;height:100%;position:relative;display:flex;align-items:center;justify-content:center}
+
+    /* Экран воспроизведения (центральный) */
+    .stage{position:relative;width:100%;height:100%;max-width:1100px;max-height:1000px;overflow:hidden}
+
+    /* Черный фон и центрирование контента */
+    .slide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;backface-visibility:hidden}
+    .hidden{opacity:0;pointer-events:none;transition:opacity var(--transition)}
+    .visible{opacity:1;pointer-events:auto;transition:opacity var(--transition)}
+
+    /* Титры в стиле кино */
+    .cinema-title{font-size:clamp(20px,5vw,48px);text-align:center;letter-spacing:0.05em;padding:2rem}
+    .sub{font-size:clamp(14px,3vw,22px);opacity:.9}
+
+    /* Фотогалерея — фотография занимает весь экран, адаптивно центрируется и покрывает */
+    .photo{width:100%;height:100%;object-fit:cover;display:block}
+    .photo-wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+    .photo-caption{position:absolute;bottom:18px;left:18px;font-size:clamp(12px,3vw,18px);background:rgba(0,0,0,0.35);padding:6px 10px;border-radius:6px}
+
+    /* Индивидуальные пожелания */
+    .wish-card{max-width:900px;padding:20px;text-align:center}
+    .student-name{font-weight:700;font-size:clamp(18px,4vw,30px);margin-bottom:8px}
+    .student-text{font-size:clamp(16px,3vw,20px)}
+
+    /* Финальная хор-надпись/титры, скользящие снизу вверх */
+    .credits{position:absolute;left:0;right:0;bottom:-100%;padding:40px 12px;text-align:center;line-height:1.6;transform:translateY(0);transition:transform 12s linear}
+    .credits.roll{transform:translateY(-110%)}
+    .credits p{margin:8px 0}
+
+    /* Прелоадер и кнопка воспроизведения (fallback) */
+    .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(0,0,0,0.6)}
+    .play-btn{background:transparent;border:2px solid var(--fg);color:var(--fg);padding:14px 22px;border-radius:999px;font-size:18px;cursor:pointer}
+    .progress{width:70vw;max-width:320px;height:6px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden}
+    .progress > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,rgba(255,255,255,0.12),rgba(255,255,255,0.4));transition:width .3s}
+
+    /* Малые экраны — чуть больше паддингов для читаемости */
+    @media (max-width:420px){.cinema-title{padding:1rem}.student-name{font-size:20px}}
+
+    /* Удобства для экранных читалок */
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  </style>
+</head>
+<body>
+  <div id="app" aria-live="polite">
+    <div class="stage" id="stage">
+      <!-- Слайды генерируются скриптом -->
+    </div>
+
+    <!-- Оверлей на случай блокировки автозапуска аудио на мобильных: одно касание — запускает весь опыт -->
+    <div id="overlay" class="overlay" role="dialog" aria-label="Запуск поздравления">
+      <button id="playBtn" class="play-btn">Нажмите, чтобы воспроизвести</button>
+      <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+      <div style="font-size:13px;opacity:.75">Если звук не воспроизводится автоматически — коснитесь экрана</div>
+    </div>
+
+    <!-- Скринридер: тексты для доступности -->
+    <div class="sr-only" id="sr-status">Готово</div>
+  </div>
+
+  <script>
+    /* ========== КОНФИГУРАЦИЯ ==========
+       - Подготовьте папку assets/photos/ с 27 фото (01.jpg..27.jpg)
+       - Подготовьте папку assets/audio/ с 27 аудиофайлов (01.mp3..27.mp3) и chorus.mp3
+       - Имя и текст пожелания для каждого ученика задаются в массиве students
+       - Все файлы должны быть оптимизированы: фото в webp/jpeg ~200-500kb, аудио mp3/ogg ~50-300kb
+    */
+
+    const students = [
+      /* --- Образец: заполните реальными 27 элементами --- */
+      {name: "Сотников Артем", photo: "assets/photos/01.jpg", audio: "assets/audio/01.mp3", text: "Желаю тебе всего наилучшего, здоровья и успехов в дальнейшей работе."},
+      {name: "Иванова Мария", photo: "assets/photos/02.jpg", audio: "assets/audio/02.mp3", text: "Спасибо за заботу и вдохновение!"},
+      {name: "Петров Алексей", photo: "assets/photos/03.jpg", audio: "assets/audio/03.mp3", text: "Пусть все мечты сбываются."},
+      {name: "Кузнецова Ольга", photo: "assets/photos/04.jpg", audio: "assets/audio/04.mp3", text: "Здоровья и радости каждый день."},
+      {name: "Смирнов Кирилл", photo: "assets/photos/05.jpg", audio: "assets/audio/05.mp3", text: "Оставайтесь таким же вдохновляющим учителем."},
+      {name: "Федорова Анна", photo: "assets/photos/06.jpg", audio: "assets/audio/06.mp3", text: "Спасибо за вашу доброту и терпение."},
+      {name: "Волков Дмитрий", photo: "assets/photos/07.jpg", audio: "assets/audio/07.mp3", text: "Пусть каждый день приносит радость."},
+      {name: "Морозова Светлана", photo: "assets/photos/08.jpg", audio: "assets/audio/08.mp3", text: "Удачи вам в новых проектах."},
+      {name: "Новиков Игорь", photo: "assets/photos/09.jpg", audio: "assets/audio/09.mp3", text: "Спасибо за всё, что вы для нас делаете."},
+      {name: "Козлова Елена", photo: "assets/photos/10.jpg", audio: "assets/audio/10.mp3", text: "Пусть каждый день будет светлым."},
+      {name: "Михайлов Павел", photo: "assets/photos/11.jpg", audio: "assets/audio/11.mp3", text: "Здоровья и благополучия вашей семье."},
+      {name: "Алексеева Наталья", photo: "assets/photos/12.jpg", audio: "assets/audio/12.mp3", text: "Спасибо за знания и доверие."},
+      {name: "Григорьев Олег", photo: "assets/photos/13.jpg", audio: "assets/audio/13.mp3", text: "Пусть удача всегда будет рядом."},
+      {name: "Васильева Марина", photo: "assets/photos/14.jpg", audio: "assets/audio/14.mp3", text: "Счастья и тепла в каждом дне."},
+      {name: "Егоров Денис", photo: "assets/photos/15.jpg", audio: "assets/audio/15.mp3", text: "Вы — лучший учитель!"},
+      {name: "Лебедева Ксения", photo: "assets/photos/16.jpg", audio: "assets/audio/16.mp3", text: "Спасибо за вашу энергию и энтузиазм."},
+      {name: "Орлов Тимофей", photo: "assets/photos/17.jpg", audio: "assets/audio/17.mp3", text: "Пусть каждый день будет вдохновением."},
+      {name: "Павлова Инна", photo: "assets/photos/18.jpg", audio: "assets/audio/18.mp3", text: "Желаю ярких событий и идей."},
+      {name: "Соколова Дарья", photo: "assets/photos/19.jpg", audio: "assets/audio/19.mp3", text: "Спасибо за веру в нас."},
+      {name: "Романов Виктор", photo: "assets/photos/20.jpg", audio: "assets/audio/20.mp3", text: "Здоровья и успехов в работе."},
+      {name: "Емельянова Лилия", photo: "assets/photos/21.jpg", audio: "assets/audio/21.mp3", text: "Пусть каждый день будет полон улыбок."},
+      {name: "Дмитриев Илья", photo: "assets/photos/22.jpg", audio: "assets/audio/22.mp3", text: "Спасибо за ваше терпение и мудрость."},
+      {name: "Крылова Полина", photo: "assets/photos/23.jpg", audio: "assets/audio/23.mp3", text: "Удачи вам и новых творческих идей."},
+      {name: "Белов Сергей", photo: "assets/photos/24.jpg", audio: "assets/audio/24.mp3", text: "Пусть все планы успешно реализуются."},
+      {name: "Мельникова Олеся", photo: "assets/photos/25.jpg", audio: "assets/audio/25.mp3", text: "Спасибо за вашу заботу."},
+      {name: "Зайцев Роман", photo: "assets/photos/26.jpg", audio: "assets/audio/26.mp3", text: "Пусть впереди будет много радости."},
+      {name: "Фролова Алина", photo: "assets/photos/27.jpg", audio: "assets/audio/27.mp3", text: "Счастья вам и вдохновения каждый день."}
+    ];
+
+    const chorusAudio = 'assets/audio/chorus.mp3'; // коллективная запись
+    const groupPhoto = 'assets/photos/group.jpg'; // групповая фотография
+
+    /* ========== ПЛАН ПОСЛЕДОВАТЕЛЬНОСТИ ==========
+       1) Вступительные титры (3–5 сек с фейдом)
+       2) Фотомонтаж: ряд фотографий (включая учителя и группу) с кроссфейдом
+       3) Индивидуальные пожелания: фото + имя + текст + озвучка
+       4) Групповое завершение: фон — групповое фото, проигрывается chorus.mp3
+       5) Заключительные титры — скролл снизу вверх
+    */
+
+    // Настройки таймингов (в секундах)
+    const cfg = {
+      introDuration: 4,
+      photoDuration: 2.5,
+      studentPause: 0.6,
+      creditsDuration: 12
+    };
+
+    // DOM
+    const stage = document.getElementById('stage');
+    const overlay = document.getElementById('overlay');
+    const playBtn = document.getElementById('playBtn');
+    const progressBar = document.getElementById('progressBar');
+    const srStatus = document.getElementById('sr-status');
+
+    // Музыкальный контроллер: один Audio для монтажей, по одному для каждого сообщения — создаём динамически
+    let bgAudio = new Audio();
+    bgAudio.preload = 'auto';
+    let sequence = [];
+
+    function createSlide(el){ stage.appendChild(el); }
+
+    // Попытка автоматического старта (в некоторых браузерах мобильных это будет заблокировано)
+    async function tryAutoStart(){
+      try{
+        // краткий silent play -> some browsers require user gesture for audible playback
+        await bgAudio.play().catch(()=>{});
+      }catch(e){/*ignore*/}
+    }
+
+    // Рисуем начальные титры в стиле кино
+    function makeIntro(){
+      const s = document.createElement('div'); s.className='slide visible';
+      s.innerHTML = `<div class="cinema-title"><div style="font-weight:700;font-size:1.2em">Дорогой наш классный руководитель</div><div class="sub">От 11-А, с любовью и благодарностью</div></div>`;
+      return {el:s,duration:cfg.introDuration};
+    }
+
+    // Фотомонтаж (перебор отдельных фотографий: учеников + учитель + группа)
+    function makePhotoMontage(){
+      // собираем список фото: фотографии всех учеников + group
+      const photos = students.map(s=>s.photo).concat([groupPhoto]);
+      const slides = photos.map((p,i)=>{
+        const s=document.createElement('div'); s.className='slide hidden';
+        s.innerHTML=`<div class="photo-wrap"><img class="photo" src="${p}" alt="Фото ${i+1}"><div class="photo-caption">Фото ${i+1} из ${photos.length}</div></div>`;
+        return {el:s,duration:cfg.photoDuration};
+      });
+      return slides;
+    }
+
+    // Индивидуальные пожелания: покадрово — фото + текст, проигрывается соответствующий audio
+    function makeStudentWishes(){
+      const slides = students.map((st, idx)=>{
+        const s=document.createElement('div'); s.className='slide hidden';
+        s.innerHTML = `
+          <div class="wish-card" role="region" aria-label="Пожелание от ${st.name}">
+            <div style="max-width:680px;margin:0 auto">
+              <img src="${st.photo}" alt="Фото ${st.name}" style="width:100%;height:44vh;object-fit:cover;border-radius:8px;margin-bottom:12px">
+              <div class="student-name">${st.name}</div>
+              <div class="student-text">${st.text}</div>
+            </div>
+          </div>
+        `;
+        return {el:s,audio:st.audio,duration:null};
+      });
+      return slides;
+    }
+
+    // Групповое завершение — групповая фотография и общий chorusAudio
+    function makeGroupFinal(){
+      const s=document.createElement('div'); s.className='slide hidden';
+      s.innerHTML = `<div class="photo-wrap"><img class="photo" src="${groupPhoto}" alt="Группа"><div style="position:absolute;bottom:30px;font-size:clamp(16px,3.5vw,22px);background:rgba(0,0,0,0.4);padding:8px 12px;border-radius:6px">Мы вместе говорим: Спасибо!</div></div>`;
+      return {el:s,audio:chorusAudio,duration:null};
+    }
+
+    // Заключительные титры — скролл снизу вверх
+    function makeCredits(){
+      const s=document.createElement('div'); s.className='slide hidden';
+      const credits = document.createElement('div'); credits.className='credits';
+      let html = `<p style="font-weight:700;font-size:1.1em">С любовью, 11-А</p>`;
+      html += '<p>Учитель: Иванова Наталья Петровна</p>';
+      html += '<hr style="width:60%;margin:14px auto;opacity:.12">';
+      html += '<p>Спасибо за ваши труды, терпение и веру в нас.</p>';
+      html += '<p>Звуки и фото предоставлены учениками.</p>';
+      html += '<p>Слова благодарности от каждого — вечны.</p>';
+      credits.innerHTML = html;
+      s.appendChild(credits);
+      return {el:s,creditsEl:credits,duration:cfg.creditsDuration};
+    }
+
+    // Собираем всю последовательность
+    function buildSequence(){
+      sequence = [];
+      sequence.push(makeIntro());
+      sequence = sequence.concat(makePhotoMontage());
+      const studentSlides = makeStudentWishes();
+      sequence = sequence.concat(studentSlides);
+      sequence.push(makeGroupFinal());
+      sequence.push(makeCredits());
+
+      // добавляем элементы на stage
+      sequence.forEach(item=>createSlide(item.el));
+    }
+
+    // Предзагрузка изображений и аудио (упрощённо) с индикатором
+    async function preloadAll(){
+      const assets = [];
+      students.forEach(s=>{ assets.push(s.photo); assets.push(s.audio); });
+      assets.push(groupPhoto); assets.push(chorusAudio);
+
+      let loaded=0;
+      function updateProgress(){
+        const pct = Math.round((loaded/assets.length)*100);
+        progressBar.style.width = pct+"%";
+      }
+
+      // Простейшая загрузка: изображение/Object URLs; аудио — создаём объекты Audio и ждём загрузки метаданных
+      const loaders = assets.map(src=>new Promise((res)=>{
+        if(src.match(/\.(jpe?g|png|webp|gif)$/i)){
+          const img=new Image(); img.src=src; img.onload=img.onerror=()=>{ loaded++; updateProgress(); res(); };
+        }else{
+          const a = new Audio(); a.preload='metadata'; a.src=src; a.onloadedmetadata=a.onerror=()=>{ loaded++; updateProgress(); res(); };
+        }
+      }));
+
+      await Promise.all(loaders);
+    }
+
+    // Воспроизведение последовательности: анимации появления/исчезновения и синхронизация аудио
+    async function playSequence(){
+      overlay.style.display='none';
+      srStatus.textContent = 'Воспроизведение';
+
+      // helper: показать слайд
+      function show(el){ el.classList.remove('hidden'); el.classList.add('visible'); }
+      function hide(el){ el.classList.remove('visible'); el.classList.add('hidden'); }
+
+      // 1) интро
+      await runItem(sequence[0]);
+
+      // 2) фотомонтаж — несколько элементов подряд, без звука (фон может быть тишиной)
+      const montageCount = students.length + 1; // все фото + group
+      for(let i=1;i<=montageCount;i++){
+        await runItem(sequence[i]);
+      }
+
+      // 3) индивидуальные пожелания — у них есть аудио
+      let baseIdx = 1 + montageCount;
+      for(let i=0;i<students.length;i++){
+        const item = sequence[baseIdx + i];
+        await runItemWithAudio(item);
+      }
+
+      // 4) групповое завершение — chorus
+      const groupItem = sequence[baseIdx + students.length];
+      await runItemWithAudio(groupItem);
+
+      // 5) credits
+      const creditsItem = sequence[sequence.length-1];
+      show(creditsItem.el);
+      // запускаем анимацию скролла титров
+      creditsItem.creditsEl.classList.add('roll');
+      await wait(creditsItem.duration*1000);
+
+      // Конец
+      srStatus.textContent = 'Поздравление завершено';
+      // Можно показать кнопку повторного воспроизведения
+      setTimeout(()=>{ overlay.style.display='flex'; playBtn.textContent='Воспроизвести снова'; },400);
+    }
+
+    // Универсальная задержка
+    function wait(ms){ return new Promise(res=>setTimeout(res,ms)); }
+
+    // Запуск элемента без звука (время — duration). Если duration === null — берём 2.5s
+    async function runItem(item){
+      const dur = (item.duration || cfg.photoDuration) * 1000;
+      // показываем и ждем
+      // прячем все слайды, показываем только этот
+      document.querySelectorAll('.slide').forEach(s=>{ s.classList.add('hidden'); s.classList.remove('visible'); });
+      show(item.el);
+      await wait(dur);
+      hide(item.el);
+    }
+
+    // Запуск элемента с аудио (item.audio) — ждём окончания воспроизведения
+    async function runItemWithAudio(item){
+      document.querySelectorAll('.slide').forEach(s=>{ s.classList.add('hidden'); s.classList.remove('visible'); });
+      show(item.el);
+      const a = new Audio(item.audio);
+      a.preload='auto';
+      try{
+        await a.play();
+      }catch(e){
+        // Если автоплей заблокирован — показываем overlay снова и ждём нажатия
+        overlay.style.display='flex';
+        playBtn.textContent='Нажмите, чтобы продолжить';
+        await waitForUserGesture();
+        overlay.style.display='none';
+        await a.play().catch(()=>{});
+      }
+
+      // Даем немного паузы после окончания
+      await new Promise(res=>{ a.onended = ()=>{ setTimeout(()=>{ res(); }, cfg.studentPause*1000); }; a.onerror = ()=>{ setTimeout(()=>{ res(); }, cfg.studentPause*1000); }; });
+      hide(item.el);
+    }
+
+    // Ожидание нажатия на overlay
+    function waitForUserGesture(){ return new Promise(res=>{ function once(){ playBtn.removeEventListener('click', once); res(); } playBtn.addEventListener('click', once); }); }
+
+    // Пытаемся предзагрузить и затем автоматически стартовать
+    async function init(){
+      buildSequence();
+      try{
+        await preloadAll();
+      }catch(e){ console.warn('Предзагрузка завершилась с ошибкой', e); }
+      progressBar.style.width='100%';
+
+      // Попытка автозапуска — если не удастся, остаётся overlay с инструкцией
+      tryAutoStart();
+    }
+
+    // Обработчики UI
+    playBtn.addEventListener('click', async ()=>{
+      // Если overlay показан до начала, запускаем воспроизведение
+      overlay.style.display='none';
+      // Пытаемся начать воспроизведение всей последовательности
+      try{
+        await playSequence();
+      }catch(e){ console.error(e); overlay.style.display='flex'; }
+    });
+
+    // Если пользователь открыл страницу и браузер разрешил autoplay — можно сразу запускать
+    window.addEventListener('load', async ()=>{
+      await init();
+      // пробуем запустить сразу
+      // если автоплей разрешен — вызвать playSequence
+      const test = new Audio(); test.src = students[0].audio; test.preload='metadata';
+      test.onloadedmetadata = async ()=>{
+        // Попробуем громко воспроизвести короткий кусок (оно может быть заблокировано)
+        try{ await test.play(); test.pause(); playSequence(); }catch(e){ /* оставляем overlay для нажатия */ }
+      };
+      test.onerror = ()=>{/* никак */};
+    });
+
+    /* --- Поддержка: если пользователь перешёл к сайту по QR, укажите инструкцию как создать "умный" QR: 
+       разместите этот index.html и папку assets на простом хостинге (netlify,github pages, vercel или школьный сервер).
+       Создайте QR, ведущий на https://your-host/путь/index.html.
+    */
+  </script>
+</body>
+</html>
